@@ -1769,6 +1769,19 @@ public static class ConfigHandler
                 }
                 continue;
             }
+
+            var link = str.TrimEx();
+            if (link.StartsWith(TrustTunnelFmt.Scheme, StringComparison.OrdinalIgnoreCase))
+            {
+                var trustTunnel = TrustTunnelFmt.Resolve(link);
+                if (trustTunnel is { } endpoint
+                    && (subFilter.IsNullOrEmpty() || Utils.IsRegexMatch(endpoint.Remarks, subFilter))
+                    && await AddTrustTunnelServer(config, endpoint.Remarks, endpoint.Toml, subid, isSub))
+                {
+                    countServers++;
+                }
+                continue;
+            }
             var profileItem = FmtHandler.ResolveConfig(str, out var msg);
             if (profileItem is null)
             {
@@ -1831,6 +1844,41 @@ public static class ConfigHandler
 
         await SaveConfig(config);
         return countServers;
+    }
+
+    private static async Task<bool> AddTrustTunnelServer(Config config, string remarks, string toml, string subid, bool isSub)
+    {
+        var profile = new ProfileItem
+        {
+            ConfigType = EConfigType.Custom,
+            CoreType = ECoreType.TrustTunnel,
+            Address = $"{Utils.GetGuid()}.toml",
+            Remarks = remarks,
+            Subid = subid,
+            IsSub = isSub,
+            DisplayLog = true,
+        };
+
+        var path = Utils.GetConfigPath(profile.Address);
+        try
+        {
+            await TrustTunnelConfigService.WriteConfigAsync(path, toml);
+            await AddServerCommon(config, profile);
+            return true;
+        }
+        catch (Exception ex)
+        {
+            Logging.SaveLog(_tag, ex);
+            try
+            {
+                File.Delete(path);
+            }
+            catch (Exception cleanupError) when (cleanupError is IOException or UnauthorizedAccessException)
+            {
+                Logging.SaveLog(_tag, cleanupError);
+            }
+            return false;
+        }
     }
 
     /// <summary>

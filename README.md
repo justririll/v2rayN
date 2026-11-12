@@ -6,7 +6,7 @@
 
 1. Build `trusttunnel_client` from the [TrustTunnel Stealth fork](https://github.com/justririll/trusttunnel-client-stealth/blob/main/DEVELOPMENT.md#building). Place the executable in `bin/trusttunnel/` in the v2rayN data directory. On Windows use `trusttunnel_client.exe`. On Linux and macOS ensure the file is executable.
 2. Install the `sing-box` core through v2rayN or place it in `bin/sing_box/`.
-3. In v2rayN, open **Add custom server** and browse to your TrustTunnel client TOML. The core selector switches to **TrustTunnel**. Save and activate the profile as usual.
+3. In v2rayN, use **Import Share Links from clipboard** for a `tt://` link with endpoint settings, or use **Add custom server** to import a TrustTunnel client TOML. Activate the imported profile as usual.
 
 v2rayN preserves the endpoint settings in the imported TOML, including `custom_sni`, `tls_profile`, `client_random` and `client_random_auth_key`. At launch it replaces the listener in a runtime copy with a loopback SOCKS5 listener and routes through it using sing-box. The pre-SOCKS port is assigned automatically.
 
