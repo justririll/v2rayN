@@ -17,9 +17,11 @@ public class ProcessService : IDisposable
         bool displayLog,
         bool redirectInput,
         Dictionary<string, string>? environmentVars,
-        Func<bool, string, Task>? updateFunc)
+        Func<bool, string, Task>? updateFunc,
+        Action<string>? observeOutput = null)
     {
         _updateFunc = updateFunc;
+        var captureOutput = displayLog || observeOutput is not null;
 
         _process = new Process
         {
@@ -30,11 +32,11 @@ public class ProcessService : IDisposable
                 WorkingDirectory = workingDirectory,
                 UseShellExecute = false,
                 RedirectStandardInput = redirectInput,
-                RedirectStandardOutput = displayLog,
-                RedirectStandardError = displayLog,
+                RedirectStandardOutput = captureOutput,
+                RedirectStandardError = captureOutput,
                 CreateNoWindow = true,
-                StandardOutputEncoding = displayLog ? Encoding.UTF8 : null,
-                StandardErrorEncoding = displayLog ? Encoding.UTF8 : null,
+                StandardOutputEncoding = captureOutput ? Encoding.UTF8 : null,
+                StandardErrorEncoding = captureOutput ? Encoding.UTF8 : null,
             },
             EnableRaisingEvents = true
         };
@@ -47,11 +49,13 @@ public class ProcessService : IDisposable
             }
         }
 
-        if (displayLog)
+        if (captureOutput)
         {
-            RegisterEventHandlers();
+            RegisterEventHandlers(displayLog, observeOutput);
         }
     }
+
+    public Task WaitForExitAsync(CancellationToken cancellationToken) => _process.WaitForExitAsync(cancellationToken);
 
     public async Task StartAsync(string pwd = null)
     {
@@ -116,13 +120,17 @@ public class ProcessService : IDisposable
         }
     }
 
-    private void RegisterEventHandlers()
+    private void RegisterEventHandlers(bool displayLog, Action<string>? observeOutput)
     {
         void dataHandler(object sender, DataReceivedEventArgs e)
         {
             if (e.Data.IsNotEmpty())
             {
-                _ = _updateFunc?.Invoke(false, e.Data + Environment.NewLine);
+                observeOutput?.Invoke(e.Data);
+                if (displayLog)
+                {
+                    _ = _updateFunc?.Invoke(false, e.Data + Environment.NewLine);
+                }
             }
         }
 

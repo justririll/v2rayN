@@ -708,12 +708,19 @@ public partial class MainWindowViewModel : MyReactiveObject
                 return;
             }
 
-            await Task.Run(async () =>
+            var started = await Task.Run(async () =>
             {
-                await LoadCore(allResult.MainResult.Context, allResult.PreSocksResult?.Context);
-                await SysProxyHandler.UpdateSysProxy(_config, false);
+                var main = allResult.MainResult.Context;
+                var loaded = await CoreManager.Instance.LoadCore(main, allResult.PreSocksResult?.Context);
+                var failedTrustTunnel = main.RunCoreType == ECoreType.TrustTunnel && !loaded;
+                await SysProxyHandler.UpdateSysProxy(_config, failedTrustTunnel);
                 await Task.Delay(1000);
+                return !failedTrustTunnel;
             });
+            if (!started)
+            {
+                return;
+            }
             RxSchedulers.MainThreadScheduler.Schedule(async () =>
             {
                 var result = await StatusBarViewModel.TestServerAvailability();
@@ -775,11 +782,6 @@ public partial class MainWindowViewModel : MyReactiveObject
     private void SetReloadEnabled(bool enabled)
     {
         RxSchedulers.MainThreadScheduler.Schedule(() => BlReloadEnabled = enabled);
-    }
-
-    private async Task LoadCore(CoreConfigContext? mainContext, CoreConfigContext? preContext)
-    {
-        await CoreManager.Instance.LoadCore(mainContext, preContext);
     }
 
     #endregion core job

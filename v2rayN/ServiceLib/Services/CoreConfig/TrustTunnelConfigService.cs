@@ -34,7 +34,12 @@ internal static class TrustTunnelConfigService
 
             if (context.TrustTunnelSocksPort is { } port)
             {
-                model!["listener"] = new TomlTable
+                // The CLI reports successful endpoint negotiation at info level.
+                if (!model!.TryGetValue("loglevel", out var logLevel) || logLevel is not ("info" or "debug" or "trace"))
+                {
+                    model["loglevel"] = "info";
+                }
+                model["listener"] = new TomlTable
                 {
                     ["socks"] = new TomlTable { ["address"] = $"{Global.Loopback}:{port}" },
                 };

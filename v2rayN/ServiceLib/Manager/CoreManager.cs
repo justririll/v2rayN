@@ -62,12 +62,12 @@ public class CoreManager
 
     /// <param name="mainContext">Resolved main context (with pre-socks ports already merged if applicable).</param>
     /// <param name="preContext">Optional pre-socks context passed to <see cref="CoreStartPreService"/>.</param>
-    public async Task LoadCore(CoreConfigContext? mainContext, CoreConfigContext? preContext)
+    public async Task<bool> LoadCore(CoreConfigContext? mainContext, CoreConfigContext? preContext)
     {
         if (mainContext == null)
         {
             await UpdateFunc(false, ResUI.CheckServerSettings);
-            return;
+            return false;
         }
 
         var node = mainContext.Node;
@@ -77,7 +77,7 @@ public class CoreManager
         if (result.Success != true)
         {
             await UpdateFunc(true, result.Msg);
-            return;
+            return false;
         }
 
         await UpdateFunc(false, $"{node.GetSummary()}");
@@ -92,11 +92,21 @@ public class CoreManager
             await WindowsUtils.RemoveTunDevice();
         }
 
-        await CoreStart(mainContext, configFileName);
         var isTrustTunnel = mainContext.RunCoreType == ECoreType.TrustTunnel;
-        if (isTrustTunnel && _processService is not { HasExited: false })
+        var proxyPort = AppManager.Instance.GetLocalPort(EInboundProtocol.socks);
+        if (isTrustTunnel && Utils.GetActiveNetworkInfo().endpoints.Any(endpoint => endpoint.Port == proxyPort))
         {
-            return;
+            await UpdateFunc(true, $"TrustTunnel: local proxy port {proxyPort} is already in use. Change the local port in Settings.");
+            return false;
+        }
+
+        var connected = isTrustTunnel ? new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously) : null;
+        await CoreStart(mainContext, configFileName, connected);
+        if (connected is not null && (_processService is null || !await WaitForTrustTunnelEndpoint(_processService, connected.Task)))
+        {
+            await CoreStop();
+            await UpdateFunc(true, "TrustTunnel: the connection to the endpoint did not come up. See the core log for details.");
+            return false;
         }
 
         var proxyReady = await WaitForProxyPort(preContext, isTrustTunnel);
@@ -104,14 +114,14 @@ public class CoreManager
         {
             await CoreStop();
             await UpdateFunc(true, "TrustTunnel: the local SOCKS5 listener did not start.");
-            return;
+            return false;
         }
         await CoreStartPreService(preContext);
 
         if (isTrustTunnel && _processPreService is not { HasExited: false })
         {
             await CoreStop();
-            return;
+            return false;
         }
 
         AppManager.Instance.RunningCoreType = preContext?.RunCoreType ?? mainContext.RunCoreType;
@@ -120,6 +130,7 @@ public class CoreManager
         {
             await UpdateFunc(true, $"{node.GetSummary()}");
         }
+        return _processService is { HasExited: false };
     }
 
     public async Task<ProcessService?> LoadCoreConfigSpeedtest(List<ServerTestItem> selecteds)
@@ -195,14 +206,20 @@ public class CoreManager
 
     #region Private
 
-    private async Task CoreStart(CoreConfigContext context, string configFileName)
+    private async Task CoreStart(CoreConfigContext context, string configFileName, TaskCompletionSource? connected)
     {
         var node = context.Node;
         var coreType = AppManager.Instance.GetCoreType(node, node.ConfigType);
         var coreInfo = CoreInfoManager.Instance.GetCoreInfo(coreType);
 
         var displayLog = node.ConfigType != EConfigType.Custom || node.DisplayLog;
-        var proc = await RunProcess(coreInfo, configFileName, displayLog, true, context.IsTunEnabled);
+        var proc = await RunProcess(coreInfo, configFileName, displayLog, true, context.IsTunEnabled, connected is null ? null : line =>
+        {
+            if (line.TrimEnd().EndsWith("Successfully connected to endpoint", StringComparison.Ordinal))
+            {
+                connected.TrySetResult();
+            }
+        });
         if (proc is null)
         {
             return;
@@ -233,6 +250,21 @@ public class CoreManager
     private async Task UpdateFunc(bool notify, string msg)
     {
         await _updateFunc?.Invoke(notify, msg);
+    }
+
+    private static async Task<bool> WaitForTrustTunnelEndpoint(ProcessService process, Task connected)
+    {
+        // The CLI retries endpoint negotiation several times, about five seconds apart.
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(35));
+        try
+        {
+            var completed = await Task.WhenAny(connected, process.WaitForExitAsync(timeout.Token)).WaitAsync(timeout.Token);
+            return completed == connected && !process.HasExited;
+        }
+        catch (OperationCanceledException)
+        {
+            return false;
+        }
     }
 
     private static async Task<bool> WaitForProxyPort(CoreConfigContext? preContext, bool isTrustTunnel)
@@ -318,7 +350,8 @@ public class CoreManager
             && isNonWindows;
     }
 
-    private async Task<ProcessService?> RunProcess(CoreInfo? coreInfo, string configPath, bool displayLog, bool mayNeedSudo, bool isTunLaunch = false)
+    private async Task<ProcessService?> RunProcess(CoreInfo? coreInfo, string configPath, bool displayLog, bool mayNeedSudo, bool isTunLaunch = false,
+        Action<string>? observeOutput = null)
     {
         var fileName = CoreInfoManager.Instance.GetCoreExecFile(coreInfo, out var msg);
         if (fileName.IsNullOrEmpty())
@@ -337,7 +370,7 @@ public class CoreManager
                 return await CoreAdminManager.Instance.RunProcessAsLinuxSudo(fileName, coreInfo, configPath);
             }
 
-            return await RunProcessNormal(fileName, coreInfo, configPath, displayLog);
+            return await RunProcessNormal(fileName, coreInfo, configPath, displayLog, observeOutput);
         }
         catch (Exception ex)
         {
@@ -347,7 +380,8 @@ public class CoreManager
         }
     }
 
-    private async Task<ProcessService?> RunProcessNormal(string fileName, CoreInfo? coreInfo, string configPath, bool displayLog)
+    private async Task<ProcessService?> RunProcessNormal(string fileName, CoreInfo? coreInfo, string configPath, bool displayLog,
+        Action<string>? observeOutput)
     {
         var environmentVars = new Dictionary<string, string>();
         foreach (var kv in coreInfo.Environment)
@@ -362,7 +396,8 @@ public class CoreManager
             displayLog: displayLog,
             redirectInput: false,
             environmentVars: environmentVars,
-            updateFunc: _updateFunc
+            updateFunc: _updateFunc,
+            observeOutput: observeOutput
         );
 
         await procService.StartAsync();

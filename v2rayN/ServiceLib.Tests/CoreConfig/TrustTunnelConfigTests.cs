@@ -11,6 +11,7 @@ public class TrustTunnelConfigTests
     {
         const string source = """
             vpn_mode = "general"
+            loglevel = "error"
 
             [endpoint]
             hostname = "vpn.example.com"
@@ -36,6 +37,7 @@ public class TrustTunnelConfigTests
 
             await launch.Success.Should().BeTrue();
             var model = TomlSerializer.Deserialize((string)launch.Data!, TrustTunnelTestTomlContext.Default.TomlTable)!;
+            await ((string)model["loglevel"]!).Should().BeEqualTo("info");
             var endpoint = (TomlTable)model["endpoint"]!;
             await ((string)endpoint["client_random"]!).Should().BeEqualTo("beef/ffff");
             await ((string)endpoint["client_random_auth_key"]!).Should().BeEqualTo("deadbeef");
