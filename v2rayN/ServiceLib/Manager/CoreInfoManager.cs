@@ -289,6 +289,16 @@ public sealed class CoreInfoManager
                         { "MIERU_CONFIG_JSON_FILE", "{0}" },
                     },
                 },
+                new CoreInfo
+                {
+                    CoreType = ECoreType.TrustTunnel,
+                    CoreExes = ["trusttunnel_client"],
+                    Arguments = "--config {0}",
+                    Url = $"{Global.GithubUrl}/{Global.CoreUrls[ECoreType.TrustTunnel]}",
+                    Match = "trusttunnel_client",
+                    VersionArg = "--version",
+                    AbsolutePath = true,
+                },
         ];
     }
 

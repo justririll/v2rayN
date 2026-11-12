@@ -7,6 +7,10 @@ public static class CoreConfigHandler
 {
     private static readonly string _tag = "CoreConfigHandler";
 
+    public static string GetMainConfigFileName(ECoreType coreType) => coreType == ECoreType.TrustTunnel
+        ? TrustTunnelConfigService.ConfigFileName
+        : Global.CoreConfigFileName;
+
     public static async Task<RetResult> GenerateClientConfig(CoreConfigContext context, string? fileName)
     {
         var config = AppManager.Instance.Config;
@@ -15,6 +19,10 @@ public static class CoreConfigHandler
 
         if (node.ConfigType == EConfigType.Custom)
         {
+            if (context.RunCoreType == ECoreType.TrustTunnel)
+            {
+                return await TrustTunnelConfigService.GenerateClientConfig(context, fileName);
+            }
             result = node.CoreType switch
             {
                 ECoreType.mihomo => await new CoreConfigClashService(config, context.IsTunEnabled).GenerateClientCustomConfig(node, fileName),

@@ -107,7 +107,7 @@ public partial class ProfilesView : ReactiveUserControl<ProfilesViewModel>
                     return;
                 }
                 var profileItem = interaction.Input;
-                var fileName = await UI.SaveFileDialog("");
+                var fileName = await UI.SaveFileDialog("", defaultExtension: profileItem.CoreType == ECoreType.TrustTunnel ? "toml" : null);
                 if (fileName.IsNullOrEmpty())
                 {
                     interaction.SetOutput(false);

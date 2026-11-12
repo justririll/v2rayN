@@ -98,7 +98,8 @@ public partial class ProfilesView
                     return;
                 }
                 var profileItem = interaction.Input;
-                if (UI.SaveFileDialog(out var fileName, "Config|*.json") != true)
+                var filter = profileItem.CoreType == ECoreType.TrustTunnel ? "TOML|*.toml" : "Config|*.json";
+                if (UI.SaveFileDialog(out var fileName, filter) != true)
                 {
                     interaction.SetOutput(false);
                     return;

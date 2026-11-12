@@ -704,6 +704,7 @@ public class Global
         { ECoreType.overtls, "ShadowsocksR-Live/overtls" },
         { ECoreType.shadowquic, "spongebob888/shadowquic" },
         { ECoreType.mieru, "enfein/mieru" },
+        { ECoreType.TrustTunnel, "justririll/trusttunnel-client-stealth" },
         { ECoreType.v2rayN, "2dust/v2rayN" },
     };
 

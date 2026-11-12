@@ -71,7 +71,8 @@ public class CoreManager
         }
 
         var node = mainContext.Node;
-        var fileName = Utils.GetBinConfigPath(Global.CoreConfigFileName);
+        var configFileName = CoreConfigHandler.GetMainConfigFileName(mainContext.RunCoreType);
+        var fileName = Utils.GetBinConfigPath(configFileName);
         var result = await CoreConfigHandler.GenerateClientConfig(mainContext, fileName);
         if (result.Success != true)
         {
@@ -91,9 +92,27 @@ public class CoreManager
             await WindowsUtils.RemoveTunDevice();
         }
 
-        await CoreStart(mainContext);
-        await WaitForProxyPort(preContext);
+        await CoreStart(mainContext, configFileName);
+        var isTrustTunnel = mainContext.RunCoreType == ECoreType.TrustTunnel;
+        if (isTrustTunnel && _processService is not { HasExited: false })
+        {
+            return;
+        }
+
+        var proxyReady = await WaitForProxyPort(preContext, isTrustTunnel);
+        if (isTrustTunnel && !proxyReady)
+        {
+            await CoreStop();
+            await UpdateFunc(true, "TrustTunnel: the local SOCKS5 listener did not start.");
+            return;
+        }
         await CoreStartPreService(preContext);
+
+        if (isTrustTunnel && _processPreService is not { HasExited: false })
+        {
+            await CoreStop();
+            return;
+        }
 
         AppManager.Instance.RunningCoreType = preContext?.RunCoreType ?? mainContext.RunCoreType;
 
@@ -176,14 +195,14 @@ public class CoreManager
 
     #region Private
 
-    private async Task CoreStart(CoreConfigContext context)
+    private async Task CoreStart(CoreConfigContext context, string configFileName)
     {
         var node = context.Node;
         var coreType = AppManager.Instance.GetCoreType(node, node.ConfigType);
         var coreInfo = CoreInfoManager.Instance.GetCoreInfo(coreType);
 
         var displayLog = node.ConfigType != EConfigType.Custom || node.DisplayLog;
-        var proc = await RunProcess(coreInfo, Global.CoreConfigFileName, displayLog, true, context.IsTunEnabled);
+        var proc = await RunProcess(coreInfo, configFileName, displayLog, true, context.IsTunEnabled);
         if (proc is null)
         {
             return;
@@ -216,15 +235,11 @@ public class CoreManager
         await _updateFunc?.Invoke(notify, msg);
     }
 
-    private static async Task WaitForProxyPort(CoreConfigContext? preContext)
+    private static async Task<bool> WaitForProxyPort(CoreConfigContext? preContext, bool isTrustTunnel)
     {
-        if (preContext is null)
+        if (preContext is null || (!preContext.IsTunEnabled && !isTrustTunnel))
         {
-            return;
-        }
-        if (!preContext.IsTunEnabled)
-        {
-            return;
+            return true;
         }
 
         using var rootCts = new CancellationTokenSource(Global.LocalFetch);
@@ -248,12 +263,12 @@ public class CoreManager
 
                 await stream.WriteAsync(greeting, linkedToken);
 
-                var read = await stream.ReadAsync(buf.AsMemory(0, 2), linkedToken);
+                var read = await stream.ReadAtLeastAsync(buf, 2, false, linkedToken);
 
                 // Server selection: VER=5, METHOD=0x00 — proxy is fully ready
-                if (read == 2 && buf[0] == 0x05)
+                if (read == 2 && buf[0] == 0x05 && (!isTrustTunnel || buf[1] == 0x00))
                 {
-                    return;
+                    return true;
                 }
             }
             catch (OperationCanceledException)
@@ -263,7 +278,7 @@ public class CoreManager
                     continue;
                 }
                 Logging.SaveLog($"WaitForProxyPort Timeout waiting for proxy port {port} to be ready.");
-                return;
+                return false;
             }
             catch (SocketException ex) when (ex.SocketErrorCode == SocketError.ConnectionRefused)
             {
@@ -275,7 +290,7 @@ public class CoreManager
                 catch (OperationCanceledException)
                 {
                     Logging.SaveLog($"WaitForProxyPort Timeout waiting for proxy port {port} to be ready.");
-                    return;
+                    return false;
                 }
             }
             catch
@@ -283,6 +298,7 @@ public class CoreManager
                 // Ignore other exceptions and continue
             }
         }
+        return false;
     }
 
     #endregion Private

@@ -1343,9 +1343,10 @@ public sealed partial class V2rayRuntime(
 
     private static string[] GetExpectedCoreConfigPaths(CoreConfigContextBuilderAllResult built)
     {
+        var mainConfigFileName = CoreConfigHandler.GetMainConfigFileName(built.MainResult.Context.RunCoreType);
         var fileNames = built.PreSocksResult is null
-            ? new[] { Global.CoreConfigFileName }
-            : new[] { Global.CoreConfigFileName, Global.CorePreConfigFileName };
+            ? new[] { mainConfigFileName }
+            : new[] { mainConfigFileName, Global.CorePreConfigFileName };
         return fileNames
             .Select(Utils.GetBinConfigPath)
             .Select(Path.GetFullPath)

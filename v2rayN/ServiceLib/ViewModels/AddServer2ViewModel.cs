@@ -89,6 +89,32 @@ public partial class AddServer2ViewModel : MyReactiveObject, ICloseable
 
         var item = await AppManager.Instance.GetProfileItem(SelectedSource.IndexId);
         item ??= SelectedSource;
+        if (item.ConfigType == EConfigType.Custom)
+        {
+            var isTrustTunnel = CoreType == nameof(ECoreType.TrustTunnel);
+            if (!isTrustTunnel && Path.GetExtension(fileName).Equals(".toml", StringComparison.OrdinalIgnoreCase))
+            {
+                try
+                {
+                    isTrustTunnel = TrustTunnelConfigService.IsConfig(await File.ReadAllTextAsync(fileName));
+                }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+                {
+                    NoticeManager.Instance.Enqueue(ResUI.FailedReadConfiguration);
+                    return;
+                }
+            }
+
+            if (isTrustTunnel)
+            {
+                item = JsonUtils.DeepCopy(item);
+                if (item.CoreType != ECoreType.TrustTunnel)
+                {
+                    item.DisplayLog = true;
+                }
+                item.CoreType = ECoreType.TrustTunnel;
+            }
+        }
         item.Address = fileName;
         var result = item.ConfigType == EConfigType.Outbound ? await ConfigHandler.AddCustomOutboundServer(_config, item, false) : await ConfigHandler.AddCustomServer(_config, item, false);
         if (result == 0)
@@ -97,6 +123,10 @@ public partial class AddServer2ViewModel : MyReactiveObject, ICloseable
             if (item.IndexId.IsNotEmpty())
             {
                 SelectedSource = JsonUtils.DeepCopy(item);
+            }
+            if (item.CoreType == ECoreType.TrustTunnel)
+            {
+                CoreType = nameof(ECoreType.TrustTunnel);
             }
             IsModified = true;
         }

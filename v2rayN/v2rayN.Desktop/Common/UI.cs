@@ -34,7 +34,7 @@ internal class UI
         return files.FirstOrDefault()?.TryGetLocalPath();
     }
 
-    public static async Task<string?> SaveFileDialog(string filter)
+    public static async Task<string?> SaveFileDialog(string filter, string? defaultExtension = null)
     {
         var sp = GetStorageProvider();
         if (sp is null)
@@ -45,6 +45,7 @@ internal class UI
         // Start async operation to open the dialog.
         var files = await sp.SaveFilePickerAsync(new FilePickerSaveOptions
         {
+            DefaultExtension = defaultExtension,
         });
 
         return files?.TryGetLocalPath();

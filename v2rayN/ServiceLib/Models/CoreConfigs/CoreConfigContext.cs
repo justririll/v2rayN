@@ -10,6 +10,7 @@ public record CoreConfigContext
     public Dictionary<string, ProfileItem> AllProxiesMap { get; init; } = new();
     public Config AppConfig { get; init; } = new();
     public FullConfigTemplateItem? FullConfigTemplate { get; init; } = new();
+    public int? TrustTunnelSocksPort { get; init; }
 
     public Dictionary<string, string> CustomOutboundContent { get; init; } = new();
 

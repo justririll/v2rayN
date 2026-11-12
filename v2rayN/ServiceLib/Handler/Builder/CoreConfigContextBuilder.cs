@@ -162,6 +162,21 @@ public class CoreConfigContextBuilder
             return new CoreConfigContextBuilderAllResult(mainResult, null);
         }
 
+        if (mainResult.Context.RunCoreType == ECoreType.TrustTunnel)
+        {
+            var listener = new TcpListener(IPAddress.Loopback, 0);
+            listener.Start();
+            try
+            {
+                var port = ((IPEndPoint)listener.LocalEndpoint).Port;
+                mainResult = mainResult with { Context = mainResult.Context with { TrustTunnelSocksPort = port } };
+            }
+            finally
+            {
+                listener.Stop();
+            }
+        }
+
         var preResult = await BuildPreSocksIfNeeded(mainResult.Context);
         if (preResult is null)
         {
@@ -204,7 +219,15 @@ public class CoreConfigContextBuilder
         var node = nodeContext.Node;
         var coreType = AppManager.Instance.GetCoreType(node, node.ConfigType);
 
-        var preSocksItem = ConfigHandler.GetPreSocksItem(config, node, coreType);
+        var preSocksItem = nodeContext.TrustTunnelSocksPort is { } port
+            ? new ProfileItem
+            {
+                CoreType = ECoreType.sing_box,
+                ConfigType = EConfigType.SOCKS,
+                Address = Global.Loopback,
+                Port = port,
+            }
+            : ConfigHandler.GetPreSocksItem(config, node, coreType);
         if (preSocksItem != null)
         {
             var preSocksResult = await Build(nodeContext.AppConfig, preSocksItem);

@@ -637,7 +637,20 @@ public static class ConfigHandler
 
         try
         {
-            File.Copy(fileName, Utils.GetConfigPath(newFileName));
+            var destination = Utils.GetConfigPath(newFileName);
+            if (profileItem.CoreType == ECoreType.TrustTunnel)
+            {
+                var text = await File.ReadAllTextAsync(fileName);
+                if (!TrustTunnelConfigService.IsConfig(text))
+                {
+                    return -1;
+                }
+                await TrustTunnelConfigService.WriteConfigAsync(destination, text);
+            }
+            else
+            {
+                File.Copy(fileName, destination);
+            }
             if (blDelete)
             {
                 File.Delete(fileName);
